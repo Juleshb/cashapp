@@ -214,63 +214,160 @@ class TransactionVerificationService {
   }
 
   /**
-   * Verify BSC (Binance Smart Chain) transaction
+   * Verify BSC (Binance Smart Chain) transaction - Using RPC instead of API
    */
   async verifyBSCTransaction(transactionHash, expectedAddress, expectedAmount) {
-    if (!this.apiKeys.bscscan) {
-      throw new Error('BSCScan API key not configured');
-    }
-
-    const url = `https://api.bscscan.com/api`;
-    const params = {
-      module: 'proxy',
-      action: 'eth_getTransactionByHash',
-      txhash: transactionHash,
-      apikey: this.apiKeys.bscscan
-    };
-
-    const response = await axios.get(url, { params });
+    // BSC RPC endpoints (public, no API key required)
+    const rpcEndpoints = [
+      'https://bsc-dataseed.binance.org/',
+      'https://bsc-dataseed1.defibit.io/',
+      'https://bsc-dataseed1.ninicoin.io/',
+      'https://bsc-dataseed2.defibit.io/',
+      'https://bsc-dataseed3.defibit.io/'
+    ];
     
-    if (response.data.error) {
-      throw new Error(`BSCScan API error: ${response.data.error.message}`);
-    }
-
-    const tx = response.data.result;
-    if (!tx) {
-      return {
-        isValid: false,
-        error: 'Transaction not found',
-        details: null
-      };
-    }
-
-    // Verify recipient address (to field)
-    const recipientAddress = tx.to;
-    const isRecipientValid = recipientAddress && 
-      recipientAddress.toLowerCase() === expectedAddress.toLowerCase();
-
-    // Verify amount (value field in wei)
-    const actualAmountWei = tx.value;
-    const expectedAmountWei = this.convertToWei(expectedAmount, 18); // BSC uses 18 decimals
-    const isAmountValid = actualAmountWei === expectedAmountWei;
-
-    // Check transaction status
-    const isConfirmed = tx.blockNumber && tx.blockNumber !== '0x0';
-
-    return {
-      isValid: isRecipientValid && isAmountValid && isConfirmed,
-      error: null,
-      details: {
-        recipientAddress,
-        actualAmount: this.convertFromWei(actualAmountWei, 18),
-        expectedAmount,
-        isRecipientValid,
-        isAmountValid,
-        isConfirmed,
-        blockNumber: tx.blockNumber,
-        gasUsed: tx.gas,
-        network: 'BSC'
+    for (const endpoint of rpcEndpoints) {
+      try {
+        console.log(`🔍 Verifying BSC transaction via RPC: ${endpoint}`);
+        
+        // Get transaction by hash
+        const txResponse = await axios.post(endpoint, {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!txResponse.data.result) {
+          console.log(`❌ No transaction found on ${endpoint}`);
+          continue;
+        }
+        
+        const tx = txResponse.data.result;
+        
+        // Get transaction receipt for token transfer logs
+        const receiptResponse = await axios.post(endpoint, {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionReceipt',
+          params: [transactionHash],
+          id: 2
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const receipt = receiptResponse.data.result;
+        
+        // Check if this is a token transfer (ERC20/BEP20)
+        if (receipt && receipt.logs && receipt.logs.length > 0) {
+          // Look for Transfer event (topic: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+          const transferLog = receipt.logs.find(log => 
+            log.topics && log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+          );
+          
+          if (transferLog) {
+            // Decode token transfer data
+            const fromAddress = '0x' + transferLog.topics[1].substring(26);
+            const toAddress = '0x' + transferLog.topics[2].substring(26);
+            const amount = BigInt(transferLog.data);
+            
+            // Verify recipient address
+            const isRecipientValid = toAddress.toLowerCase() === expectedAddress.toLowerCase();
+            
+            // Determine token type and decimals
+            const contractAddress = transferLog.address.toLowerCase();
+            let tokenSymbol = 'UNKNOWN';
+            let tokenDecimals = 18;
+            
+            if (contractAddress === '0x55d398326f99059ff775485246999027b3197955') {
+              tokenSymbol = 'BUSD'; // or USDT, both use same contract
+              tokenDecimals = 18;
+            } else if (contractAddress === '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d') {
+              tokenSymbol = 'USDC';
+              tokenDecimals = 18;
+            }
+            
+            const actualAmount = Number(amount) / Math.pow(10, tokenDecimals);
+            const isAmountValid = Math.abs(actualAmount - expectedAmount) <= 0.01;
+            
+            // Check transaction status
+            const isConfirmed = tx.blockNumber && tx.blockNumber !== '0x0';
+            
+            return {
+              isValid: isRecipientValid && isAmountValid && isConfirmed,
+              error: null,
+              details: {
+                recipientAddress: toAddress,
+                actualAmount: actualAmount,
+                expectedAmount,
+                isRecipientValid,
+                isAmountValid,
+                isConfirmed,
+                blockNumber: tx.blockNumber,
+                gasUsed: receipt.gasUsed,
+                network: 'BSC',
+                tokenSymbol: tokenSymbol,
+                contractAddress: transferLog.address,
+                isTokenTransfer: true
+              }
+            };
+          }
+        }
+        
+        // If no token transfer found, check if it's a regular BNB transfer
+        if (tx.value && tx.value !== '0x0') {
+          const recipientAddress = tx.to;
+          const isRecipientValid = recipientAddress && 
+            recipientAddress.toLowerCase() === expectedAddress.toLowerCase();
+          
+          const actualAmountWei = tx.value;
+          const expectedAmountWei = this.convertToWei(expectedAmount, 18);
+          const isAmountValid = actualAmountWei === expectedAmountWei;
+          
+          const isConfirmed = tx.blockNumber && tx.blockNumber !== '0x0';
+          
+          return {
+            isValid: isRecipientValid && isAmountValid && isConfirmed,
+            error: null,
+            details: {
+              recipientAddress,
+              actualAmount: this.convertFromWei(actualAmountWei, 18),
+              expectedAmount,
+              isRecipientValid,
+              isAmountValid,
+              isConfirmed,
+              blockNumber: tx.blockNumber,
+              gasUsed: tx.gas,
+              network: 'BSC',
+              tokenSymbol: 'BNB',
+              isTokenTransfer: false
+            }
+          };
+        }
+        
+        return {
+          isValid: false,
+          error: 'No token transfer or BNB transfer found in transaction',
+          details: null
+        };
+        
+      } catch (error) {
+        console.log(`❌ BSC RPC endpoint ${endpoint} failed: ${error.message}`);
+        continue;
       }
+    }
+    
+    return {
+      isValid: false,
+      error: 'All BSC RPC endpoints failed',
+      details: null
     };
   }
 
@@ -606,99 +703,152 @@ class TransactionVerificationService {
   }
 
   /**
-   * Get BSC transaction info (without validation)
+   * Get BSC transaction info (without validation) - Using RPC instead of API
    */
   async getBSCTransactionInfo(transactionHash) {
-    const url = `https://api.bscscan.com/api`;
-    const params = {
-      module: 'proxy',
-      action: 'eth_getTransactionByHash',
-      txhash: transactionHash,
-      apikey: this.apiKeys.bscscan || 'YourApiKeyToken' // Use default if no API key
-    };
-
+    // BSC RPC endpoints (public, no API key required)
+    const rpcEndpoints = [
+      'https://bsc-dataseed.binance.org/',
+      'https://bsc-dataseed1.defibit.io/',
+      'https://bsc-dataseed1.ninicoin.io/',
+      'https://bsc-dataseed2.defibit.io/',
+      'https://bsc-dataseed3.defibit.io/'
+    ];
+    
+    for (const endpoint of rpcEndpoints) {
+      try {
+        console.log(`🔍 Trying BSC RPC endpoint: ${endpoint}`);
+        
+        // Get transaction by hash
+        const txResponse = await axios.post(endpoint, {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!txResponse.data.result) {
+          console.log(`❌ No transaction found on ${endpoint}`);
+          continue;
+        }
+        
+        const tx = txResponse.data.result;
+        console.log(`🔍 BSC transaction data:`, tx);
+        
+        // Get transaction receipt for token transfer logs
+        const receiptResponse = await axios.post(endpoint, {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionReceipt',
+          params: [transactionHash],
+          id: 2
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const receipt = receiptResponse.data.result;
+        console.log(`🔍 BSC transaction receipt:`, receipt);
+        
+        // Check if this is a token transfer (ERC20/BEP20)
+        let tokenTransferInfo = null;
+        if (receipt && receipt.logs && receipt.logs.length > 0) {
+          // Look for Transfer event (topic: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+          const transferLog = receipt.logs.find(log => 
+            log.topics && log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+          );
+          
+          if (transferLog) {
+            // Decode token transfer data
+            const fromAddress = '0x' + transferLog.topics[1].substring(26);
+            const toAddress = '0x' + transferLog.topics[2].substring(26);
+            const amount = BigInt(transferLog.data);
+            
+            // Determine token type based on contract address
+            const contractAddress = transferLog.address.toLowerCase();
+            let tokenSymbol = 'UNKNOWN';
+            let tokenDecimals = 18;
+            
+            if (contractAddress === '0x55d398326f99059ff775485246999027b3197955') {
+              // This is USDT/BUSD contract on BSC
+              tokenSymbol = 'BUSD'; // or USDT, both use same contract
+              tokenDecimals = 18;
+            } else if (contractAddress === '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d') {
+              tokenSymbol = 'USDC';
+              tokenDecimals = 18;
+            }
+            
+            const actualAmount = Number(amount) / Math.pow(10, tokenDecimals);
+            
+            tokenTransferInfo = {
+              contractAddress: transferLog.address,
+              tokenSymbol: tokenSymbol,
+              tokenDecimals: tokenDecimals,
+              fromAddress: fromAddress,
+              toAddress: toAddress,
+              amount: actualAmount
+            };
+            
+            console.log(`🔍 Token transfer detected:`, tokenTransferInfo);
+          }
+        }
+        
+        // Return transaction info
+        return {
+          exists: true,
+          error: null,
+          details: {
+            recipientAddress: tokenTransferInfo ? tokenTransferInfo.toAddress : tx.to,
+            senderAddress: tokenTransferInfo ? tokenTransferInfo.fromAddress : tx.from,
+            amount: tokenTransferInfo ? tokenTransferInfo.amount.toString() : this.convertFromWei(tx.value, 18),
+            blockNumber: tx.blockNumber,
+            gasUsed: receipt ? receipt.gasUsed : tx.gas,
+            gasPrice: tx.gasPrice,
+            network: 'BSC',
+            isConfirmed: tx.blockNumber && tx.blockNumber !== '0x0',
+            timestamp: null, // RPC doesn't provide timestamp
+            isTokenTransfer: !!tokenTransferInfo,
+            tokenSymbol: tokenTransferInfo ? tokenTransferInfo.tokenSymbol : null,
+            tokenName: tokenTransferInfo ? tokenTransferInfo.tokenSymbol : null,
+            contractAddress: tokenTransferInfo ? tokenTransferInfo.contractAddress : null
+          }
+        };
+        
+      } catch (error) {
+        console.log(`❌ BSC RPC endpoint ${endpoint} failed: ${error.message}`);
+        continue;
+      }
+    }
+    
+    // If all RPC endpoints fail, try API as fallback
     try {
-      console.log(`🔍 Making BSC API call with params:`, params);
+      console.log(`🔍 All RPC endpoints failed, trying BSCScan API as fallback...`);
+      const url = `https://api.bscscan.com/api`;
+      const params = {
+        module: 'proxy',
+        action: 'eth_getTransactionByHash',
+        txhash: transactionHash,
+        apikey: this.apiKeys.bscscan || 'YourApiKeyToken'
+      };
+
       const response = await axios.get(url, { params });
-      console.log(`🔍 BSC API response status:`, response.status);
-      console.log(`🔍 BSC API response data:`, JSON.stringify(response.data, null, 2));
       
       if (response.data.error || (response.data.status === "0" && response.data.message === "NOTOK")) {
-        // If API key error, try without API key (limited requests)
-        if (response.data.error?.message?.includes('API key') || 
-            response.data.result?.includes('Invalid API Key') ||
-            response.data.status === "0") {
-          console.log('⚠️ BSCScan API key not configured, using limited public access');
-          const publicParams = {
-            module: 'proxy',
-            action: 'eth_getTransactionByHash',
-            txhash: transactionHash
-          };
-          console.log(`🔍 Making BSC public API call with params:`, publicParams);
-          const publicResponse = await axios.get(url, { params: publicParams });
-          console.log(`🔍 BSC public API response:`, JSON.stringify(publicResponse.data, null, 2));
-          
-          if (publicResponse.data.error) {
-            throw new Error(`BSCScan API error: ${publicResponse.data.error.message}`);
-          }
-          
-          const tx = publicResponse.data.result;
-          console.log(`🔍 BSC transaction data:`, tx);
-          
-          if (!tx || !tx.hash || tx.hash === '0x') {
-            return {
-              exists: false,
-              error: 'Transaction not found on BSC blockchain',
-              details: null
-            };
-          }
-
-          // Validate that this is actually a transaction (not just a response)
-          if (!tx.to || !tx.from || !tx.value) {
-            console.log(`🔍 Invalid transaction data - to: ${tx.to}, from: ${tx.from}, value: ${tx.value}`);
-            return {
-              exists: false,
-              error: 'Invalid transaction data on BSC blockchain',
-              details: null
-            };
-          }
-
-          return {
-            exists: true,
-            error: null,
-            details: {
-              recipientAddress: tx.to,
-              senderAddress: tx.from,
-              amount: this.convertFromWei(tx.value, 18),
-              blockNumber: tx.blockNumber,
-              gasUsed: tx.gas,
-              gasPrice: tx.gasPrice,
-              network: 'BSC',
-              isConfirmed: tx.blockNumber && tx.blockNumber !== '0x0',
-              timestamp: tx.timestamp || null
-            }
-          };
-        }
         throw new Error(`BSCScan API error: ${response.data.error?.message || response.data.result}`);
       }
 
       const tx = response.data.result;
-      console.log(`🔍 BSC transaction data:`, tx);
       
       if (!tx || !tx.hash || tx.hash === '0x') {
         return {
           exists: false,
           error: 'Transaction not found on BSC blockchain',
-          details: null
-        };
-      }
-
-      // Validate that this is actually a transaction (not just a response)
-      if (!tx.to || !tx.from || !tx.value) {
-        console.log(`🔍 Invalid transaction data - to: ${tx.to}, from: ${tx.from}, value: ${tx.value}`);
-        return {
-          exists: false,
-          error: 'Invalid transaction data on BSC blockchain',
           details: null
         };
       }
@@ -715,11 +865,12 @@ class TransactionVerificationService {
           gasPrice: tx.gasPrice,
           network: 'BSC',
           isConfirmed: tx.blockNumber && tx.blockNumber !== '0x0',
-          timestamp: tx.timestamp || null
+          timestamp: tx.timestamp || null,
+          isTokenTransfer: false
         }
       };
     } catch (error) {
-      console.error(`❌ BSC API error details:`, error.response?.data || error.message);
+      console.error(`❌ BSC API fallback also failed:`, error.message);
       throw new Error(`BSCScan API error: ${error.message}`);
     }
   }

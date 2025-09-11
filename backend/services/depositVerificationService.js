@@ -157,56 +157,172 @@ const verifyTronTransaction = async (transactionHash, systemAddresses, expectedA
   }
 };
 
-// Verify BSC (BEP20) transaction
+// Verify BSC (BEP20) transaction - Using RPC instead of API
 const verifyBscTransaction = async (transactionHash, systemAddresses, expectedAmount) => {
   try {
-    // Use BSCScan API to verify transaction
-    const apiKey = process.env.BSCSCAN_API_KEY;
-    const response = await axios.get(
-      `https://api.bscscan.com/api?module=proxy&action=eth_getTransactionByHash&txhash=${transactionHash}&apikey=${apiKey}`
-    );
-
-    if (response.data.error) {
-      return { verified: false, message: 'Transaction not found on BSC network' };
-    }
-
-    const tx = response.data.result;
+    console.log(`🔍 Verifying BSC token transaction: ${transactionHash}`);
     
-    // Check if transaction is confirmed
-    if (!tx.blockNumber || tx.blockNumber === '0x0') {
-      return { verified: false, message: 'Transaction not yet confirmed on BSC network' };
-    }
-
-    // Check if recipient is our system address
-    const recipient = tx.to.toLowerCase();
-    const systemAddressesLower = systemAddresses.map(addr => addr.toLowerCase());
+    // BSC RPC endpoints (public, no API key required)
+    const rpcEndpoints = [
+      'https://bsc-dataseed.binance.org/',
+      'https://bsc-dataseed1.defibit.io/',
+      'https://bsc-dataseed1.ninicoin.io/',
+      'https://bsc-dataseed2.defibit.io/',
+      'https://bsc-dataseed3.defibit.io/'
+    ];
     
-    if (!systemAddressesLower.includes(recipient)) {
-      return { verified: false, message: 'Transaction recipient is not a system address' };
+    for (const endpoint of rpcEndpoints) {
+      try {
+        console.log(`🔍 Trying BSC RPC endpoint: ${endpoint}`);
+        
+        // Get transaction by hash
+        const txResponse = await axios.post(endpoint, {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!txResponse.data.result) {
+          console.log(`❌ No transaction found on ${endpoint}`);
+          continue;
+        }
+        
+        const tx = txResponse.data.result;
+        console.log(`🔍 BSC transaction data:`, tx);
+        
+        // Get transaction receipt for token transfer logs
+        const receiptResponse = await axios.post(endpoint, {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionReceipt',
+          params: [transactionHash],
+          id: 2
+        }, {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const receipt = receiptResponse.data.result;
+        console.log(`🔍 BSC transaction receipt:`, receipt);
+        
+        // Check if this is a token transfer (ERC20/BEP20)
+        if (receipt && receipt.logs && receipt.logs.length > 0) {
+          // Look for Transfer event (topic: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+          const transferLog = receipt.logs.find(log => 
+            log.topics && log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+          );
+          
+          if (transferLog) {
+            // Decode token transfer data
+            const fromAddress = '0x' + transferLog.topics[1].substring(26);
+            const toAddress = '0x' + transferLog.topics[2].substring(26);
+            const amount = BigInt(transferLog.data);
+            
+            // Check if recipient is our system address
+            const recipient = toAddress.toLowerCase();
+            const systemAddressesLower = systemAddresses.map(addr => addr.toLowerCase());
+            
+            if (!systemAddressesLower.includes(recipient)) {
+              return { verified: false, message: 'Transaction recipient is not a system address' };
+            }
+            
+            // Determine token type based on contract address
+            const contractAddress = transferLog.address.toLowerCase();
+            let tokenSymbol = 'UNKNOWN';
+            let tokenDecimals = 18;
+            
+            if (contractAddress === '0x55d398326f99059ff775485246999027b3197955') {
+              // This is USDT/BUSD contract on BSC
+              tokenSymbol = 'BUSD'; // or USDT, both use same contract
+              tokenDecimals = 18;
+            } else if (contractAddress === '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d') {
+              tokenSymbol = 'USDC';
+              tokenDecimals = 18;
+            }
+            
+            const actualAmount = Number(amount) / Math.pow(10, tokenDecimals);
+            
+            console.log(`🔍 Token transfer detected:`, {
+              contractAddress: transferLog.address,
+              tokenSymbol: tokenSymbol,
+              fromAddress: fromAddress,
+              toAddress: toAddress,
+              amount: actualAmount
+            });
+            
+            // Check if this is a supported token
+            const supportedTokens = {
+              'USDT': '0x55d398326f99059ff775485246999027b3197955',
+              'BUSD': '0x55d398326f99059ff775485246999027b3197955',
+              'USDC': '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d'
+            };
+            
+            if (!supportedTokens[tokenSymbol] || supportedTokens[tokenSymbol].toLowerCase() !== contractAddress) {
+              return { verified: false, message: `Unsupported token: ${tokenSymbol} (${contractAddress})` };
+            }
+            
+            console.log(`🔍 Amount verification: Expected: ${expectedAmount}, Actual: ${actualAmount}, Token: ${tokenSymbol}`);
+
+            if (Math.abs(actualAmount - expectedAmount) > 0.01) {
+              return { verified: false, message: `Amount mismatch. Expected: ${expectedAmount}, Received: ${actualAmount} ${tokenSymbol}` };
+            }
+
+            return {
+              verified: true,
+              amount: actualAmount,
+              recipient: toAddress,
+              blockNumber: parseInt(tx.blockNumber, 16),
+              timestamp: new Date().toISOString(), // RPC doesn't provide timestamp
+              tokenSymbol: tokenSymbol,
+              tokenName: tokenSymbol,
+              contractAddress: transferLog.address
+            };
+          }
+        }
+        
+        // If no token transfer found, check if it's a regular ETH/BNB transfer
+        if (tx.value && tx.value !== '0x0') {
+          const recipient = tx.to.toLowerCase();
+          const systemAddressesLower = systemAddresses.map(addr => addr.toLowerCase());
+          
+          if (!systemAddressesLower.includes(recipient)) {
+            return { verified: false, message: 'Transaction recipient is not a system address' };
+          }
+          
+          const actualAmount = parseInt(tx.value, 16) / Math.pow(10, 18); // BNB has 18 decimals
+          
+          if (Math.abs(actualAmount - expectedAmount) > 0.01) {
+            return { verified: false, message: `Amount mismatch. Expected: ${expectedAmount}, Received: ${actualAmount} BNB` };
+          }
+          
+          return {
+            verified: true,
+            amount: actualAmount,
+            recipient: tx.to,
+            blockNumber: parseInt(tx.blockNumber, 16),
+            timestamp: new Date().toISOString(),
+            tokenSymbol: 'BNB',
+            tokenName: 'BNB',
+            contractAddress: null
+          };
+        }
+        
+        return { verified: false, message: 'No token transfer or BNB transfer found in transaction' };
+        
+      } catch (error) {
+        console.log(`❌ BSC RPC endpoint ${endpoint} failed: ${error.message}`);
+        continue;
+      }
     }
-
-    // For BEP20 USDT, we need to decode the input data
-    // This is a simplified version - in production, you'd need to properly decode ERC20 transfer data
-    const inputData = tx.input;
-    if (!inputData.startsWith('0xa9059cbb')) { // transfer function signature
-      return { verified: false, message: 'Not a valid USDT transfer transaction' };
-    }
-
-    // Decode amount from input data (simplified)
-    const amountHex = inputData.substring(74, 138); // Amount is at position 74-137
-    const amount = parseInt(amountHex, 16) / Math.pow(10, 18); // USDT has 18 decimals
-
-    if (Math.abs(amount - expectedAmount) > 0.01) {
-      return { verified: false, message: `Amount mismatch. Expected: ${expectedAmount}, Received: ${amount}` };
-    }
-
-    return {
-      verified: true,
-      amount,
-      recipient: tx.to,
-      blockNumber: parseInt(tx.blockNumber, 16),
-      timestamp: new Date().toISOString() // BSCScan doesn't provide timestamp in this endpoint
-    };
+    
+    return { verified: false, message: 'All BSC RPC endpoints failed' };
 
   } catch (error) {
     console.error('Error verifying BSC transaction:', error);
@@ -383,6 +499,10 @@ const getTokenContractAddresses = async () => {
         'BEP20': process.env.USDC_BEP20_CONTRACT || '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
         'ERC20': process.env.USDC_ERC20_CONTRACT || '0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8C',
         'POLYGON': process.env.USDC_POLYGON_CONTRACT || '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174'
+      },
+      'BUSD': {
+        'BEP20': process.env.BUSD_BEP20_CONTRACT || '0x55d398326f99059fF775485246999027B3197955',
+        'ERC20': process.env.BUSD_ERC20_CONTRACT || '0x4Fabb145d64652a948d72533023f6E7A623C7C53'
       }
     };
 
