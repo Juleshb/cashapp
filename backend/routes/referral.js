@@ -88,7 +88,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
 
     // Get referral link
     const referralLink = generateReferralLink(
-      process.env.FRONTEND_URL || 'https://tmb8080.online',
+      process.env.FRONTEND_URL || 'https://www.tmb8080.online',
       req.user.referralCode
     );
 
