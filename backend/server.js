@@ -35,7 +35,7 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: 'https://www.tmb8080.store' || 'https://www.tmb8080.online',
+  origin: 'https://www.tmb8080.online' || 'https://www.tmb8080.store',
   credentials: true
 }));
 
