@@ -50,7 +50,7 @@ async function createAdminUser() {
     console.log('🔗 Referral Code:', referralCode);
     console.log('');
     console.log('⚠️  IMPORTANT: Change these credentials after first login!');
-    console.log('🌐 Admin Panel URL: https://www.tmb8080.online/admin');
+    console.log('🌐 Admin Panel URL: https://www.tmb8080.store/admin');
     console.log('📱 You can also access admin features through the API endpoints');
 
   } catch (error) {

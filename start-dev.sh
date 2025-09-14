@@ -54,7 +54,7 @@ fi
 # Start both services
 echo -e "${GREEN}🚀 Starting development servers...${NC}"
 echo -e "${BLUE}Backend will run on: https://bambe.shop${NC}"
-echo -e "${BLUE}Frontend will run on: https://www.tmb8080.online${NC}"
+echo -e "${BLUE}Frontend will run on: https://www.tmb8080.store${NC}"
 
 # Start backend in background
 cd ../backend

@@ -11,6 +11,7 @@ const prisma = new PrismaClient();
 // Import routes
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const fullAdminRoutes = require('./routes/fulladmin');
 const walletRoutes = require('./routes/wallet');
 const depositRoutes = require('./routes/deposit');
 const withdrawalRoutes = require('./routes/withdrawal');
@@ -34,7 +35,7 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://www.tmb8080.online',
+  origin: process.env.FRONTEND_URL || 'https://www.tmb8080.store',
   credentials: true
 }));
 
@@ -74,6 +75,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/fulladmin', fullAdminRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/deposit', depositRoutes);
 app.use('/api/withdrawal', withdrawalRoutes);
@@ -183,7 +185,7 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`🚀 Trinity Metro Bike API running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://www.tmb8080.online'}`);
+      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://www.tmb8080.store'}`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
