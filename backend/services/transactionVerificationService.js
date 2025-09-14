@@ -375,60 +375,241 @@ class TransactionVerificationService {
    * Verify Ethereum transaction
    */
   async verifyEthereumTransaction(transactionHash, expectedAddress, expectedAmount) {
-    if (!this.apiKeys.etherscan) {
-      throw new Error('Etherscan API key not configured');
-    }
-
-    const url = `https://api.etherscan.io/api`;
-    const params = {
-      module: 'proxy',
-      action: 'eth_getTransactionByHash',
-      txhash: transactionHash,
-      apikey: this.apiKeys.etherscan
-    };
-
-    const response = await axios.get(url, { params });
-    
-    if (response.data.error) {
-      throw new Error(`Etherscan API error: ${response.data.error.message}`);
-    }
-
-    const tx = response.data.result;
-    if (!tx) {
-      return {
-        isValid: false,
-        error: 'Transaction not found',
-        details: null
-      };
-    }
-
-    // Verify recipient address
-    const recipientAddress = tx.to;
-    const isRecipientValid = recipientAddress && 
-      recipientAddress.toLowerCase() === expectedAddress.toLowerCase();
-
-    // Verify amount (value field in wei)
-    const actualAmountWei = tx.value;
-    const expectedAmountWei = this.convertToWei(expectedAmount, 18);
-    const isAmountValid = actualAmountWei === expectedAmountWei;
-
-    // Check transaction status
-    const isConfirmed = tx.blockNumber && tx.blockNumber !== '0x0';
-
-    return {
-      isValid: isRecipientValid && isAmountValid && isConfirmed,
-      error: null,
-      details: {
-        recipientAddress,
-        actualAmount: this.convertFromWei(actualAmountWei, 18),
-        expectedAmount,
-        isRecipientValid,
-        isAmountValid,
-        isConfirmed,
-        blockNumber: tx.blockNumber,
-        gasUsed: tx.gas,
-        network: 'Ethereum'
+    // Try multiple Ethereum API endpoints for better reliability
+    const endpoints = [
+      {
+        name: 'Etherscan',
+        url: 'https://api.etherscan.io/api',
+        params: {
+          module: 'proxy',
+          action: 'eth_getTransactionByHash',
+          txhash: transactionHash,
+          apikey: this.apiKeys.etherscan || 'YourApiKeyToken'
+        }
+      },
+      {
+        name: 'Etherscan Public',
+        url: 'https://api.etherscan.io/api',
+        params: {
+          module: 'proxy',
+          action: 'eth_getTransactionByHash',
+          txhash: transactionHash
+        }
+      },
+      {
+        name: 'Alchemy',
+        url: 'https://eth-mainnet.g.alchemy.com/v2/demo',
+        method: 'POST',
+        data: {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }
+      },
+      {
+        name: 'Infura',
+        url: 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+        method: 'POST',
+        data: {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }
       }
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔍 Verifying Ethereum transaction via ${endpoint.name}...`);
+        
+        let response;
+        if (endpoint.method === 'POST') {
+          response = await axios.post(endpoint.url, endpoint.data, {
+            timeout: 10000,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+        } else {
+          response = await axios.get(endpoint.url, { 
+            params: endpoint.params,
+            timeout: 10000
+          });
+        }
+        
+        let tx;
+        if (endpoint.name === 'Etherscan' || endpoint.name === 'Etherscan Public') {
+          // Handle Etherscan response format
+          if (response.data.error || (response.data.status === "0" && response.data.message === "NOTOK")) {
+            if (response.data.error?.message?.includes('API key') || 
+                response.data.result?.includes('Invalid API Key') ||
+                response.data.status === "0") {
+              console.log(`⚠️ ${endpoint.name} API key issue, trying next endpoint`);
+              continue;
+            }
+            throw new Error(`${endpoint.name} API error: ${response.data.error?.message || response.data.result}`);
+          }
+          tx = response.data.result;
+        } else {
+          // Handle RPC response format (Alchemy, Infura)
+          if (response.data.error) {
+            throw new Error(`${endpoint.name} RPC error: ${response.data.error.message}`);
+          }
+          tx = response.data.result;
+        }
+        
+        if (!tx || !tx.hash || tx.hash === '0x') {
+          console.log(`🔍 No transaction found on ${endpoint.name}`);
+          continue;
+        }
+
+        // Verify recipient address
+        const recipientAddress = tx.to;
+        const isRecipientValid = recipientAddress && 
+          recipientAddress.toLowerCase() === expectedAddress.toLowerCase();
+
+        // Verify amount (value field in wei)
+        const actualAmountWei = tx.value;
+        const expectedAmountWei = this.convertToWei(expectedAmount, 18);
+        const isAmountValid = actualAmountWei === expectedAmountWei;
+
+        // Check transaction status
+        const isConfirmed = tx.blockNumber && tx.blockNumber !== '0x0';
+
+        // Try to get transaction receipt for token transfer analysis
+        let receipt = null;
+        let tokenTransfers = [];
+        let actualRecipientAddress = recipientAddress;
+        let actualAmount = this.convertFromWei(actualAmountWei, 18);
+        
+        try {
+          console.log(`🔍 Getting transaction receipt for token transfer analysis...`);
+          let receiptResponse;
+          if (endpoint.method === 'POST') {
+            receiptResponse = await axios.post(endpoint.url, {
+              jsonrpc: '2.0',
+              method: 'eth_getTransactionReceipt',
+              params: [transactionHash],
+              id: 2
+            }, {
+              timeout: 10000,
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+          } else {
+            const receiptParams = {
+              module: 'proxy',
+              action: 'eth_getTransactionReceipt',
+              txhash: transactionHash,
+              apikey: endpoint.params.apikey || 'YourApiKeyToken'
+            };
+            receiptResponse = await axios.get(endpoint.url, { 
+              params: receiptParams,
+              timeout: 10000
+            });
+          }
+          
+          if (endpoint.name === 'Etherscan' || endpoint.name === 'Etherscan Public') {
+            receipt = receiptResponse.data.result;
+          } else {
+            receipt = receiptResponse.data.result;
+          }
+          
+          // Analyze logs for token transfers
+          if (receipt && receipt.logs && receipt.logs.length > 0) {
+            console.log(`🔍 Analyzing ${receipt.logs.length} log entries for token transfers...`);
+            
+            for (const log of receipt.logs) {
+              // Look for ERC20 Transfer events
+              if (log.topics && log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
+                const fromAddress = '0x' + log.topics[1].substring(26);
+                const toAddress = '0x' + log.topics[2].substring(26);
+                const amount = BigInt(log.data);
+                
+                // Determine token type and decimals
+                const contractAddress = log.address.toLowerCase();
+                let tokenSymbol = 'UNKNOWN';
+                let tokenDecimals = 18;
+                
+                // Common token contracts on Ethereum
+                if (contractAddress === '0xdac17f958d2ee523a2206206994597c13d831ec7') {
+                  tokenSymbol = 'USDT';
+                  tokenDecimals = 6;
+                } else if (contractAddress === '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48') {
+                  tokenSymbol = 'USDC';
+                  tokenDecimals = 6;
+                } else if (contractAddress === '0x6b175474e89094c44da98b954eedeac495271d0f') {
+                  tokenSymbol = 'DAI';
+                  tokenDecimals = 18;
+                }
+                
+                const transferAmount = Number(amount) / Math.pow(10, tokenDecimals);
+                
+                tokenTransfers.push({
+                  from: fromAddress,
+                  to: toAddress,
+                  amount: transferAmount,
+                  tokenSymbol,
+                  contractAddress,
+                  decimals: tokenDecimals
+                });
+                
+                console.log(`🔍 Token transfer detected: ${transferAmount} ${tokenSymbol} from ${fromAddress} to ${toAddress}`);
+                
+                // If this is a token transfer to our expected address, use this as the actual recipient and amount
+                if (toAddress.toLowerCase() === expectedAddress.toLowerCase()) {
+                  actualRecipientAddress = toAddress;
+                  actualAmount = transferAmount;
+                  console.log(`✅ Found matching token transfer to expected address: ${actualAmount} ${tokenSymbol}`);
+                }
+              }
+            }
+          }
+        } catch (receiptError) {
+          console.log(`⚠️ Could not get transaction receipt: ${receiptError.message}`);
+        }
+        
+        // Update validation based on token transfers if found
+        const finalIsRecipientValid = actualRecipientAddress && 
+          actualRecipientAddress.toLowerCase() === expectedAddress.toLowerCase();
+        const finalIsAmountValid = Math.abs(actualAmount - expectedAmount) < 0.01; // Allow small tolerance
+        
+        console.log(`✅ Ethereum transaction verified via ${endpoint.name}!`);
+        return {
+          isValid: finalIsRecipientValid && finalIsAmountValid && isConfirmed,
+          error: null,
+          details: {
+            recipientAddress: actualRecipientAddress,
+            actualAmount: actualAmount,
+            expectedAmount,
+            isRecipientValid: finalIsRecipientValid,
+            isAmountValid: finalIsAmountValid,
+            isConfirmed,
+            blockNumber: tx.blockNumber,
+            gasUsed: tx.gas,
+            network: 'Ethereum',
+            verifiedVia: endpoint.name,
+            tokenTransfers: tokenTransfers,
+            isContractInteraction: tx.to !== tx.from && tx.input && tx.input.length > 2,
+            contractAddress: tx.to
+          }
+        };
+
+      } catch (error) {
+        console.log(`❌ ${endpoint.name} verification failed: ${error.message}`);
+        continue;
+      }
+    }
+    
+    // If all endpoints fail, return not found
+    console.log(`❌ Ethereum transaction verification failed on all endpoints`);
+    return {
+      isValid: false,
+      error: 'Transaction not found on Ethereum blockchain (all APIs failed)',
+      details: null
     };
   }
 
@@ -879,119 +1060,229 @@ class TransactionVerificationService {
    * Get Ethereum transaction info (without validation)
    */
   async getEthereumTransactionInfo(transactionHash) {
-    const url = `https://api.etherscan.io/api`;
-    const params = {
-      module: 'proxy',
-      action: 'eth_getTransactionByHash',
-      txhash: transactionHash,
-      apikey: this.apiKeys.etherscan || 'YourApiKeyToken' // Use default if no API key
-    };
+    // Try multiple Ethereum API endpoints for better reliability
+    const endpoints = [
+      {
+        name: 'Etherscan',
+        url: 'https://api.etherscan.io/api',
+        params: {
+          module: 'proxy',
+          action: 'eth_getTransactionByHash',
+          txhash: transactionHash,
+          apikey: this.apiKeys.etherscan || 'YourApiKeyToken'
+        }
+      },
+      {
+        name: 'Etherscan Public',
+        url: 'https://api.etherscan.io/api',
+        params: {
+          module: 'proxy',
+          action: 'eth_getTransactionByHash',
+          txhash: transactionHash
+        }
+      },
+      {
+        name: 'Alchemy',
+        url: 'https://eth-mainnet.g.alchemy.com/v2/demo',
+        method: 'POST',
+        data: {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }
+      },
+      {
+        name: 'Infura',
+        url: 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+        method: 'POST',
+        data: {
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionByHash',
+          params: [transactionHash],
+          id: 1
+        }
+      }
+    ];
 
-    try {
-      console.log(`🔍 Making Ethereum API call with params:`, params);
-      const response = await axios.get(url, { params });
-      console.log(`🔍 Ethereum API response status:`, response.status);
-      console.log(`🔍 Ethereum API response data:`, JSON.stringify(response.data, null, 2));
-      
-      if (response.data.error || (response.data.status === "0" && response.data.message === "NOTOK")) {
-        // If API key error, try without API key (limited requests)
-        if (response.data.error?.message?.includes('API key') || 
-            response.data.result?.includes('Invalid API Key') ||
-            response.data.status === "0") {
-          console.log('⚠️ Etherscan API key not configured, using limited public access');
-          const publicParams = {
-            module: 'proxy',
-            action: 'eth_getTransactionByHash',
-            txhash: transactionHash
-          };
-          console.log(`🔍 Making Ethereum public API call with params:`, publicParams);
-          const publicResponse = await axios.get(url, { params: publicParams });
-          console.log(`🔍 Ethereum public API response:`, JSON.stringify(publicResponse.data, null, 2));
-          
-          if (publicResponse.data.error) {
-            throw new Error(`Etherscan API error: ${publicResponse.data.error.message}`);
-          }
-          
-          const tx = publicResponse.data.result;
-          console.log(`🔍 Ethereum transaction data:`, tx);
-          
-          if (!tx || !tx.hash || tx.hash === '0x') {
-            return {
-              exists: false,
-              error: 'Transaction not found on Ethereum blockchain',
-              details: null
-            };
-          }
-
-          // Validate that this is actually a transaction (not just a response)
-          if (!tx.to || !tx.from || !tx.value) {
-            console.log(`🔍 Invalid transaction data - to: ${tx.to}, from: ${tx.from}, value: ${tx.value}`);
-            return {
-              exists: false,
-              error: 'Invalid transaction data on Ethereum blockchain',
-              details: null
-            };
-          }
-
-          return {
-            exists: true,
-            error: null,
-            details: {
-              recipientAddress: tx.to,
-              senderAddress: tx.from,
-              amount: this.convertFromWei(tx.value, 18),
-              blockNumber: tx.blockNumber,
-              gasUsed: tx.gas,
-              gasPrice: tx.gasPrice,
-              network: 'Ethereum',
-              isConfirmed: tx.blockNumber && tx.blockNumber !== '0x0',
-              timestamp: tx.timestamp || null
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`🔍 Trying Ethereum ${endpoint.name} API...`);
+        
+        let response;
+        if (endpoint.method === 'POST') {
+          response = await axios.post(endpoint.url, endpoint.data, {
+            timeout: 10000,
+            headers: {
+              'Content-Type': 'application/json'
             }
-          };
+          });
+        } else {
+          response = await axios.get(endpoint.url, { 
+            params: endpoint.params,
+            timeout: 10000
+          });
         }
-        throw new Error(`Etherscan API error: ${response.data.error?.message || response.data.result}`);
-      }
-
-      const tx = response.data.result;
-      console.log(`🔍 Ethereum transaction data:`, tx);
-      
-      if (!tx || !tx.hash || tx.hash === '0x') {
-        return {
-          exists: false,
-          error: 'Transaction not found on Ethereum blockchain',
-          details: null
-        };
-      }
-
-      // Validate that this is actually a transaction (not just a response)
-      if (!tx.to || !tx.from || !tx.value) {
-        console.log(`🔍 Invalid transaction data - to: ${tx.to}, from: ${tx.from}, value: ${tx.value}`);
-        return {
-          exists: false,
-          error: 'Invalid transaction data on Ethereum blockchain',
-          details: null
-        };
-      }
-
-      return {
-        exists: true,
-        error: null,
-        details: {
-          recipientAddress: tx.to,
-          senderAddress: tx.from,
-          amount: this.convertFromWei(tx.value, 18),
-          blockNumber: tx.blockNumber,
-          gasUsed: tx.gas,
-          gasPrice: tx.gasPrice,
-          network: 'Ethereum',
-          isConfirmed: tx.blockNumber && tx.blockNumber !== '0x0',
-          timestamp: tx.timestamp || null
+        
+        console.log(`🔍 ${endpoint.name} API response status:`, response.status);
+        console.log(`🔍 ${endpoint.name} API response data:`, JSON.stringify(response.data, null, 2));
+        
+        let tx;
+        if (endpoint.name === 'Etherscan' || endpoint.name === 'Etherscan Public') {
+          // Handle Etherscan response format
+          if (response.data.error || (response.data.status === "0" && response.data.message === "NOTOK")) {
+            if (response.data.error?.message?.includes('API key') || 
+                response.data.result?.includes('Invalid API Key') ||
+                response.data.status === "0") {
+              console.log(`⚠️ ${endpoint.name} API key issue, trying next endpoint`);
+              continue;
+            }
+            throw new Error(`${endpoint.name} API error: ${response.data.error?.message || response.data.result}`);
+          }
+          tx = response.data.result;
+        } else {
+          // Handle RPC response format (Alchemy, Infura)
+          if (response.data.error) {
+            throw new Error(`${endpoint.name} RPC error: ${response.data.error.message}`);
+          }
+          tx = response.data.result;
         }
-      };
-    } catch (error) {
-      console.error(`❌ Ethereum API error details:`, error.response?.data || error.message);
-      throw new Error(`Etherscan API error: ${error.message}`);
+        
+        console.log(`🔍 ${endpoint.name} transaction data:`, tx);
+        
+        if (!tx || !tx.hash || tx.hash === '0x') {
+          console.log(`🔍 No transaction found on ${endpoint.name}`);
+          continue;
+        }
+
+        // Validate that this is actually a transaction (not just a response)
+        if (!tx.to || !tx.from || !tx.value) {
+          console.log(`🔍 Invalid transaction data on ${endpoint.name} - to: ${tx.to}, from: ${tx.from}, value: ${tx.value}`);
+          continue;
+        }
+
+        console.log(`✅ Transaction found on ${endpoint.name}!`);
+        
+        // Try to get transaction receipt for more detailed information
+        let receipt = null;
+        let tokenTransfers = [];
+        
+        try {
+          console.log(`🔍 Getting transaction receipt for detailed analysis...`);
+          let receiptResponse;
+          if (endpoint.method === 'POST') {
+            receiptResponse = await axios.post(endpoint.url, {
+              jsonrpc: '2.0',
+              method: 'eth_getTransactionReceipt',
+              params: [transactionHash],
+              id: 2
+            }, {
+              timeout: 10000,
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+          } else {
+            const receiptParams = {
+              module: 'proxy',
+              action: 'eth_getTransactionReceipt',
+              txhash: transactionHash,
+              apikey: endpoint.params.apikey || 'YourApiKeyToken'
+            };
+            receiptResponse = await axios.get(endpoint.url, { 
+              params: receiptParams,
+              timeout: 10000
+            });
+          }
+          
+          if (endpoint.name === 'Etherscan' || endpoint.name === 'Etherscan Public') {
+            receipt = receiptResponse.data.result;
+          } else {
+            receipt = receiptResponse.data.result;
+          }
+          
+          console.log(`🔍 Transaction receipt:`, receipt);
+          
+          // Analyze logs for token transfers
+          if (receipt && receipt.logs && receipt.logs.length > 0) {
+            console.log(`🔍 Analyzing ${receipt.logs.length} log entries for token transfers...`);
+            
+            for (const log of receipt.logs) {
+              // Look for ERC20 Transfer events (topic: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef)
+              if (log.topics && log.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
+                const fromAddress = '0x' + log.topics[1].substring(26);
+                const toAddress = '0x' + log.topics[2].substring(26);
+                const amount = BigInt(log.data);
+                
+                // Determine token type and decimals
+                const contractAddress = log.address.toLowerCase();
+                let tokenSymbol = 'UNKNOWN';
+                let tokenDecimals = 18;
+                
+                // Common token contracts on Ethereum
+                if (contractAddress === '0xdac17f958d2ee523a2206206994597c13d831ec7') {
+                  tokenSymbol = 'USDT';
+                  tokenDecimals = 6;
+                } else if (contractAddress === '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48') {
+                  tokenSymbol = 'USDC';
+                  tokenDecimals = 6;
+                } else if (contractAddress === '0x6b175474e89094c44da98b954eedeac495271d0f') {
+                  tokenSymbol = 'DAI';
+                  tokenDecimals = 18;
+                }
+                
+                const actualAmount = Number(amount) / Math.pow(10, tokenDecimals);
+                
+                tokenTransfers.push({
+                  from: fromAddress,
+                  to: toAddress,
+                  amount: actualAmount,
+                  tokenSymbol,
+                  contractAddress,
+                  decimals: tokenDecimals
+                });
+                
+                console.log(`🔍 Token transfer detected: ${actualAmount} ${tokenSymbol} from ${fromAddress} to ${toAddress}`);
+              }
+            }
+          }
+        } catch (receiptError) {
+          console.log(`⚠️ Could not get transaction receipt: ${receiptError.message}`);
+        }
+        
+        return {
+          exists: true,
+          error: null,
+          details: {
+            recipientAddress: tx.to,
+            senderAddress: tx.from,
+            amount: this.convertFromWei(tx.value, 18),
+            blockNumber: tx.blockNumber,
+            gasUsed: tx.gas,
+            gasPrice: tx.gasPrice,
+            network: 'Ethereum',
+            isConfirmed: tx.blockNumber && tx.blockNumber !== '0x0',
+            timestamp: tx.timestamp || null,
+            foundVia: endpoint.name,
+            tokenTransfers: tokenTransfers,
+            isContractInteraction: tx.to !== tx.from && tx.input && tx.input.length > 2,
+            contractAddress: tx.to
+          }
+        };
+
+      } catch (error) {
+        console.log(`❌ ${endpoint.name} API failed: ${error.message}`);
+        continue;
+      }
     }
+    
+    // If all endpoints fail, return not found
+    console.log(`❌ Transaction not found on any Ethereum API endpoint`);
+    return {
+      exists: false,
+      error: 'Transaction not found on Ethereum blockchain (all APIs failed)',
+      details: null
+    };
   }
 
   /**
