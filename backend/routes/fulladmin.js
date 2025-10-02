@@ -242,7 +242,7 @@ router.post('/manual-deposit', [
       try {
         await sendEmail({
           to: user.email,
-          subject: 'Manual Deposit Confirmed - Trinity Metro Bike',
+          subject: 'Manual Deposit Confirmed - B-Bike',
           template: 'manual-deposit-confirmation',
           data: {
             fullName: user.fullName,
@@ -534,7 +534,7 @@ router.put('/manual-deposits/:depositId/cancel', [
     try {
       await sendEmail({
         to: deposit.user.email,
-        subject: 'Deposit Cancelled - Trinity Metro Bike',
+        subject: 'Deposit Cancelled - B-Bike',
         template: 'deposit-cancelled',
         data: {
           fullName: deposit.user.fullName,

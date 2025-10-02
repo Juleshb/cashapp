@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
 
 async function setupNewEnvironment() {
   try {
-    console.log('🚀 Setting up new environment for Trinity Metro Bike...\n');
+    console.log('🚀 Setting up new environment for B-Bike...\n');
 
     // Step 1: Reset database completely
     console.log('📋 Step 1: Resetting database...');

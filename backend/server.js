@@ -68,7 +68,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    service: 'Trinity Metro Bike API'
+    service: 'B-Bike API'
   });
 });
 
@@ -183,7 +183,7 @@ async function startServer() {
 
     // Start server
     app.listen(PORT, () => {
-      console.log(`🚀 Trinity Metro Bike API running on port ${PORT}`);
+      console.log(`🚀 B-Bike API running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://www.tmb8080.online'}`);
     });

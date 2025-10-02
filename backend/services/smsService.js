@@ -32,14 +32,14 @@ const sendSMS = async ({ to, message }) => {
 
 // Send OTP via SMS
 const sendOTPSMS = async ({ to, otp, purpose = 'verification' }) => {
-  const message = `Trinity Metro Bike: Your ${purpose} code is ${otp}. This code expires in 10 minutes. Do not share this code with anyone.`;
+  const message = `B-Bike: Your ${purpose} code is ${otp}. This code expires in 10 minutes. Do not share this code with anyone.`;
   
   return await sendSMS({ to, message });
 };
 
 // Send notification SMS
 const sendNotificationSMS = async ({ to, message }) => {
-  const fullMessage = `Trinity Metro Bike: ${message}`;
+  const fullMessage = `B-Bike: ${message}`;
   
   return await sendSMS({ to, message: fullMessage });
 };

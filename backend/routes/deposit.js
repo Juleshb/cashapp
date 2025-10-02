@@ -250,8 +250,8 @@ router.post('/create', [
 
     // Create Coinbase Commerce charge
     const coinbaseResponse = await axios.post('https://api.commerce.coinbase.com/charges', {
-      name: 'Trinity Metro Bike Deposit',
-      description: `Deposit ${amount} ${currency} to Trinity Metro Bike wallet`,
+      name: 'B-Bike Deposit',
+      description: `Deposit ${amount} ${currency} to B-Bike wallet`,
       local_price: {
         amount: amount.toString(),
         currency: currency

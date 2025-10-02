@@ -17,18 +17,18 @@ const createTransporter = () => {
 // Email templates
 const emailTemplates = {
   verification: (data) => ({
-    subject: 'Welcome to Trinity Metro Bike - Verify Your Email',
+    subject: 'Welcome to B-Bike - Verify Your Email',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">Trinity Metro Bike</h1>
+          <h1 style="color: #2563eb; margin: 0;">B-Bike</h1>
           <p style="color: #6b7280; margin: 5px 0;">Crypto-Powered Referral Platform</p>
         </div>
         
         <div style="background: #f8fafc; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
           <h2 style="color: #1f2937; margin-top: 0;">Welcome, ${data.fullName}!</h2>
           <p style="color: #4b5563; line-height: 1.6;">
-            Thank you for joining Trinity Metro Bike! To complete your registration and start earning, 
+            Thank you for joining B-Bike! To complete your registration and start earning, 
             please verify your email address using the code below:
           </p>
           
@@ -57,18 +57,18 @@ const emailTemplates = {
         
         <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; color: #6b7280; font-size: 14px;">
           <p>If you didn't create this account, please ignore this email.</p>
-          <p>Best regards,<br>Trinity Metro Bike Team</p>
+          <p>Best regards,<br>B-Bike Team</p>
         </div>
       </div>
     `
   }),
 
   depositConfirmation: (data) => ({
-    subject: 'Deposit Confirmed - Trinity Metro Bike',
+    subject: 'Deposit Confirmed - B-Bike',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">Trinity Metro Bike</h1>
+          <h1 style="color: #2563eb; margin: 0;">B-Bike</h1>
         </div>
         
         <div style="background: #ecfdf5; border: 1px solid #10b981; padding: 30px; border-radius: 10px;">
@@ -109,11 +109,11 @@ const emailTemplates = {
   }),
 
   withdrawalRequest: (data) => ({
-    subject: 'Withdrawal Request Received - Trinity Metro Bike',
+    subject: 'Withdrawal Request Received - B-Bike',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">Trinity Metro Bike</h1>
+          <h1 style="color: #2563eb; margin: 0;">B-Bike</h1>
         </div>
         
         <div style="background: #fef3c7; border: 1px solid #f59e0b; padding: 30px; border-radius: 10px;">
@@ -147,11 +147,11 @@ const emailTemplates = {
   }),
 
   referralBonus: (data) => ({
-    subject: 'Referral Bonus Earned! - Trinity Metro Bike',
+    subject: 'Referral Bonus Earned! - B-Bike',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">Trinity Metro Bike</h1>
+          <h1 style="color: #2563eb; margin: 0;">B-Bike</h1>
         </div>
         
         <div style="background: #ecfdf5; border: 1px solid #10b981; padding: 30px; border-radius: 10px;">

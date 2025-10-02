@@ -183,7 +183,7 @@ export const AuthProvider = ({ children }) => {
       });
 
       const displayName = user.fullName || user.email || user.phone || 'User';
-      toast.success(`Welcome to Trinity Metro Bike, ${displayName}!`);
+      toast.success(`Welcome to B-Bike, ${displayName}!`);
       return { success: true };
 
     } catch (error) {

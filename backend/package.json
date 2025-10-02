@@ -1,7 +1,7 @@
 {
   "name": "trinity-metro-bike-backend",
   "version": "1.0.0",
-  "description": "Backend API for Trinity Metro Bike referral platform",
+  "description": "Backend API for B-Bike referral platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -51,6 +51,6 @@
     "nodejs",
     "express"
   ],
-  "author": "Trinity Metro Bike Team",
+  "author": "B-Bike Team",
   "license": "MIT"
 }

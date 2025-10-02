@@ -93,7 +93,7 @@ function runScript(scriptName) {
 }
 
 async function main() {
-  console.log('🔧 Trinity Metro Bike - Script Runner');
+  console.log('🔧 B-Bike - Script Runner');
   console.log('=====================================\n');
 
   // Check if script name is provided as command line argument

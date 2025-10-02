@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Trinity Metro Bike Development Startup Script
-echo "🚀 Starting Trinity Metro Bike Development Environment..."
+# B-Bike Development Startup Script
+echo "🚀 Starting B-Bike Development Environment..."
 
 # Colors for output
 RED='\033[0;31m'

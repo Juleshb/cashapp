@@ -1,4 +1,4 @@
-# Trinity Metro Bike - Crypto Referral Platform
+# B-Bike - Crypto Referral Platform
 
 A comprehensive crypto-powered referral and wallet growth platform built with React.js and Node.js.
 
@@ -151,7 +151,7 @@ The platform includes a comprehensive task system that rewards users for various
    EMAIL_PORT=587
    EMAIL_USER="your-email@gmail.com"
    EMAIL_PASS="your-app-password"
-   EMAIL_FROM="Trinity Metro Bike <noreply@trinitymetrobike.com>"
+   EMAIL_FROM="B-Bike <noreply@trinitymetrobike.com>"
    
    # Admin
    ADMIN_EMAIL="admin@trinitymetrobike.com"

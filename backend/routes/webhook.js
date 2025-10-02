@@ -389,7 +389,7 @@ const handleChargeResolved = async (charge) => {
 router.get('/health', (req, res) => {
   res.json({
     status: 'OK',
-    service: 'Trinity Metro Bike Webhooks',
+    service: 'B-Bike Webhooks',
     timestamp: new Date().toISOString()
   });
 });
