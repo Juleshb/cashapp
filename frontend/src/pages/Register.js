@@ -83,7 +83,7 @@ const Register = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 px-4 py-8 pb-20 md:pb-0">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Trinity Metro Bike</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Be-Bike</h1>
           <p className="text-gray-600 dark:text-gray-300 mt-2">Join the crypto growth revolution</p>
         </div>
 
