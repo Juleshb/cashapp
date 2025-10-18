@@ -315,6 +315,7 @@ const getUserManagementData = async (page = 1, limit = 20, search = '') => {
       isAdmin: false,
       ...(search && {
         OR: [
+          { id: { contains: search, mode: 'insensitive' } },
           { fullName: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },

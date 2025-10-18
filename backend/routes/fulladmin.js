@@ -38,6 +38,7 @@ router.get('/users', [
 
     if (search) {
       whereConditions.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
         { fullName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } }
