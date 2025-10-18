@@ -25,8 +25,12 @@ const AdminUserManagement = () => {
       
       if (searchTerm) params.search = searchTerm;
       
+      console.log('AdminUserManagement - Making API call with params:', params);
       const response = await adminAPI.getUsers(params);
-      console.log('AdminUserManagement - API response:', response);
+      console.log('AdminUserManagement - Full API response:', response);
+      console.log('AdminUserManagement - Response data:', response.data);
+      console.log('AdminUserManagement - Users array:', response.data?.data);
+      console.log('AdminUserManagement - Pagination:', response.data?.pagination);
       return response;
     },
     keepPreviousData: true,
@@ -36,25 +40,34 @@ const AdminUserManagement = () => {
 
   // Extract data from API response with robust handling
   const users = useMemo(() => {
-    if (!usersData) return [];
+    console.log('AdminUserManagement - Extracting users from:', usersData);
+    
+    if (!usersData) {
+      console.log('AdminUserManagement - No usersData, returning empty array');
+      return [];
+    }
     
     // Handle different possible response structures
     if (Array.isArray(usersData)) {
+      console.log('AdminUserManagement - usersData is array, returning as is');
       return usersData;
     }
     
     if (usersData.data && Array.isArray(usersData.data)) {
+      console.log('AdminUserManagement - Found users in usersData.data:', usersData.data.length, 'users');
       return usersData.data;
     }
     
     if (usersData.data && usersData.data.data && Array.isArray(usersData.data.data)) {
+      console.log('AdminUserManagement - Found users in usersData.data.data:', usersData.data.data.length, 'users');
       return usersData.data.data;
     }
     
+    console.log('AdminUserManagement - No users found, returning empty array');
     return [];
   }, [usersData]);
   
-  const pagination = usersData?.pagination || usersData?.data?.pagination || null;
+  const pagination = usersData?.data?.pagination || usersData?.pagination || null;
 
   const toggleUserStatusMutation = useMutation({
     mutationFn: (userId) => adminAPI.toggleUserStatus(userId),
