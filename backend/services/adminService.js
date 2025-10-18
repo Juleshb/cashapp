@@ -317,6 +317,7 @@ const getUserManagementData = async (page = 1, limit = 20, search = '') => {
         OR: [
           { fullName: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
           { referralCode: { contains: search, mode: 'insensitive' } }
         ]
       })

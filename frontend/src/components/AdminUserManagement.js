@@ -147,7 +147,7 @@ const AdminUserManagement = () => {
         <div className="flex items-center gap-2">
           <input
             type="text"
-            placeholder="Search users by name, email, or referral code..."
+            placeholder="Search users by name, email, phone, or referral code..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
